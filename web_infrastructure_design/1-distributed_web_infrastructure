@@ -1,0 +1,135 @@
+1. Distributed web infrastructure
+==================================
+
+Infrastructure diagram (whiteboard description):
+
+                              [User]
+                                |
+                        DNS: www.foobar.com -> Load Balancer IP
+                                |
+                                v
+                        [Load Balancer (HAproxy)]
+                          /                \
+                         /                  \
+                        v                    v
+                 [Server 1]            [Server 2]
+                 - Nginx               - Nginx
+                 - App server          - App server
+                 - Codebase            - Codebase
+                 - MySQL (Primary)     - MySQL (Replica)
+                        \                    /
+                         \                  /
+                          Primary-Replica replication
+                          (data written on Primary,
+                           copied to Replica)
+
+Explanation, starting from the user:
+
+A user types www.foobar.com in their browser. DNS resolves this domain
+to the IP address of the load balancer. The browser then sends an HTTP
+request to that IP.
+
+The load balancer (HAProxy) receives the request. Instead of forwarding
+it to a single server, it distributes incoming traffic between Server 1
+and Server 2, based on a distribution algorithm. Each of these two
+servers is a full copy of the previous single-server setup: it has its
+own web server (Nginx), application server, codebase, and database.
+
+Why each additional element is added:
+
+- Load balancer (HAProxy):
+  Added to distribute traffic across multiple servers, so that no
+  single server is overwhelmed, and to remove the single point of
+  failure that existed with only one server. If one server goes down,
+  the load balancer can redirect traffic to the remaining healthy
+  server(s).
+
+- A second server:
+  Added for redundancy and to be able to handle more traffic
+  (horizontal scaling). With two servers, if one fails, the other can
+  keep serving users, and maintenance can be done on one server at a
+  time without full downtime.
+
+- Two databases (Primary-Replica):
+  Added so that data is not lost if one database server fails, and so
+  that read operations can be spread across multiple database
+  instances, reducing the load on a single database.
+
+Load balancer distribution algorithm:
+
+HAProxy is configured with the "Round Robin" algorithm. Round Robin
+distributes incoming requests to the servers in the pool sequentially,
+one after another, in a repeating cycle (Server 1, then Server 2, then
+Server 1, then Server 2, and so on). Each server receives an
+approximately equal share of the traffic. Other algorithms exist too,
+such as Least Connections (send the request to the server currently
+handling the fewest active connections) or IP Hash (always send a
+given client IP to the same server), but this setup uses Round Robin
+because both servers have identical, equal capacity.
+
+Active-Active vs Active-Passive:
+
+This load-balancer setup is configured as Active-Active. This means
+both Server 1 and Server 2 are actively processing traffic at the
+same time; the load balancer sends requests to both of them
+simultaneously, according to the distribution algorithm.
+
+This is different from an Active-Passive setup, where only one server
+(the Active one) handles all the traffic at any given time, while the
+second server (the Passive one) stays idle, on standby, ready to take
+over only if the Active server fails. In Active-Passive, the passive
+server's resources are not used for normal traffic, whereas in
+Active-Active, both servers' resources are used, which allows for
+better usage of resources and higher total capacity, at the cost of
+more complex configuration (for example, session/data consistency
+between servers).
+
+How a Primary-Replica (Master-Slave) database cluster works:
+
+In a Primary-Replica cluster, one database server is designated as
+the Primary (Master), and the other as the Replica (Slave). All write
+operations (INSERT, UPDATE, DELETE) are sent only to the Primary
+database. The Primary then replicates (copies) those changes to the
+Replica database, usually asynchronously, so the Replica's data stays
+in sync with the Primary shortly after each write. Read operations
+(SELECT) can be performed on either the Primary or the Replica,
+allowing read traffic to be spread across both databases and reducing
+the load on the Primary.
+
+Difference between the Primary node and the Replica node, from the
+application's point of view:
+
+The application must send all write queries (data that needs to be
+created, updated, or deleted) to the Primary node, because only the
+Primary accepts writes. The application can send read queries (data
+that only needs to be fetched) to either the Primary or the Replica,
+often preferring the Replica to reduce load on the Primary. If the
+application mistakenly sends a write query to the Replica, it will
+fail or be rejected, since Replica nodes are typically configured as
+read-only.
+
+Issues with this infrastructure:
+
+- SPOF (Single Point of Failure):
+  The load balancer itself is now a SPOF: if HAProxy fails, users can
+  no longer reach either server, even though both servers are still
+  healthy. The Primary database is also a SPOF for write operations:
+  if it fails, no new writes can be processed until a Replica is
+  promoted to Primary (which is not automatic in this simple setup).
+
+- Security issues (no firewall, no HTTPS):
+  There is no firewall in this infrastructure, meaning any port on any
+  server could potentially be reached from the internet, increasing
+  the attack surface (for example, direct access to the database port
+  or SSH from anywhere). There is also no HTTPS, meaning all traffic
+  between the user and the load balancer travels as plain, unencrypted
+  HTTP; this exposes any data sent (including passwords, cookies,
+  personal information) to interception (man-in-the-middle attacks).
+
+- No monitoring:
+  Without monitoring in place, there is no automated way to know when
+  a server, the load balancer, or the database goes down, becomes
+  slow, or runs out of resources (CPU, RAM, disk). Issues would only
+  be discovered when users start complaining, instead of being caught
+  and fixed proactively (or even automatically) before they cause a
+  visible outage.
