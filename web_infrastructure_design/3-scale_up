@@ -1,0 +1,88 @@
+3. Scale up
+============
+
+Infrastructure diagram (whiteboard description):
+
+                              [User]
+                                |
+                    DNS: www.foobar.com -> Load Balancer cluster IP
+                                |
+                                v
+                  [Load Balancer 1 (HAProxy)] <--cluster--> [Load Balancer 2 (HAProxy)]
+                          (Active)                              (Passive/Backup)
+                                |
+                    -------------------------
+                    |                       |
+                    v                       v
+             [Web server 1]          [Web server 2]
+              (Nginx)                  (Nginx)
+                    \                       /
+                     \                     /
+                      v                   v
+                  [Application server 1]  [Application server 2]
+                  - Codebase               - Codebase
+                      \                       /
+                       \                     /
+                        v                   v
+                   [Database server (Primary)]
+                   [Database server (Replica)]
+
+Explanation, starting from the user:
+
+A user types www.foobar.com in their browser. DNS resolves this to the
+IP address shared by the load balancer cluster. The request reaches
+whichever load balancer (HAProxy) is currently active. That load
+balancer then forwards the request to one of the web servers, which
+forwards it to an application server, which in turn talks to the
+database to read or write data, then the response travels back the
+same path to the user.
+
+Unlike the previous (distributed) infrastructure, where each server
+contained the web server, application server, and database all
+together, this infrastructure splits each of those components onto
+its own dedicated server(s). This is what "scaling up" means here:
+each layer of the stack now has its own server(s) that can be scaled,
+maintained, and secured independently.
+
+For every additional element, why it is added:
+
+- A second load balancer (HAProxy), configured as a cluster with the
+  first one:
+  A single load balancer is a SPOF: if it goes down, users cannot
+  reach any server, even though the servers behind it are healthy.
+  Adding a second HAProxy node, clustered with the first (for example
+  using a shared virtual IP with keepalived), removes this single
+  point of failure. If the active load balancer fails, the second one
+  takes over automatically, and traffic keeps flowing.
+
+- Splitting the web server onto its own server(s):
+  Separating the web server (Nginx) from the rest of the stack allows
+  it to be scaled independently based on the number of incoming HTTP
+  connections, without being limited by the resources needed for the
+  application logic or the database. It also isolates it so that a
+  problem in the application server or database does not directly
+  crash the web server layer.
+
+- Splitting the application server onto its own server(s):
+  Separating the application server (which runs the codebase) from
+  the web server and database allows this layer to be scaled based
+  on how much processing power the business logic needs, independent
+  of web traffic handling or database storage needs. It also makes it
+  easier to deploy new code (restart/update only the application
+  server) without touching the web server or database.
+
+- Splitting the database onto its own dedicated server:
+  Separating the database (MySQL) from the web and application
+  servers allows the database to have dedicated resources (CPU, RAM,
+  disk I/O) tuned specifically for data storage and queries, which
+  are very different resource needs from serving web pages or running
+  application code. It also isolates the most sensitive/critical data
+  layer, making it easier to secure, back up, and scale (for example,
+  adding read replicas) separately from the rest of the infrastructure.
+
+Overall, splitting each component onto its own server, combined with
+a clustered pair of load balancers, allows each layer of the
+infrastructure to be scaled, maintained, monitored, and secured
+independently, and removes the load balancer as a single point of
+failure, making the whole system more resilient and better prepared
+to handle increased traffic.
