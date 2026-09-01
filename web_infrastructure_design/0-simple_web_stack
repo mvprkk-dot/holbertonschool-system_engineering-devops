@@ -1,0 +1,102 @@
+0. Simple web stack
+====================
+
+Infrastructure diagram (whiteboard description):
+
+[User] --HTTP request (www.foobar.com)--> [DNS server]
+   |
+   | DNS resolves www.foobar.com to server IP 8.8.8.8 (A record)
+   v
+[User] --HTTP request to 8.8.8.8--> [1 Server]
+                                       |
+                                       |-- Web server (Nginx)
+                                       |-- Application server
+                                       |-- Application files (codebase)
+                                       |-- Database (MySQL)
+                                       v
+                                   [Response back to User]
+
+Explanation, starting from the user:
+
+A user opens their browser and types www.foobar.com. The computer sends a
+DNS request to translate the domain name www.foobar.com into an IP
+address (8.8.8.8), using an A record (www is the subdomain that points
+directly to the server IP). Once the IP is known, the browser sends an
+HTTP request to that IP address, on port 80 (or 443 for HTTPS).
+
+The request arrives at the server, which is listening for connections
+on port 80/443. The web server (Nginx) receives the HTTP request. Nginx
+checks whether the requested resource is static (HTML, CSS, images) or
+dynamic (needs code to be executed). If static, Nginx returns the file
+directly. If dynamic, Nginx forwards the request to the application
+server.
+
+The application server runs the actual code (the codebase) of the
+website. It processes the business logic, and if it needs data (for
+example, user information, articles, products), it queries the
+database (MySQL) to retrieve or store that data. The database returns
+the requested data to the application server.
+
+The application server then builds the response (usually HTML, JSON,
+etc.) and sends it back to the web server, which forwards it back to
+the user's browser over HTTP. The browser then renders the page for
+the user.
+
+Definitions:
+
+- What is a server?
+  A server is a physical or virtual machine (a computer) that provides
+  a service (data, resources, programs) to other computers, called
+  clients, over a network.
+
+- What is the role of the domain name?
+  The domain name (www.foobar.com) provides a human-readable name that
+  is easier to remember than an IP address. It is used by DNS to find
+  the IP address of the server that hosts the website.
+
+- What type of DNS record is www in www.foobar.com?
+  It is an A record. An A record maps a domain/subdomain name to an
+  IPv4 address. Here, www is a subdomain of foobar.com that points to
+  the server's IP (8.8.8.8).
+
+- What is the role of the web server?
+  The web server (Nginx) is the entry point that receives HTTP/HTTPS
+  requests from users. It serves static content directly and forwards
+  dynamic requests to the application server. It can also handle
+  tasks like SSL termination, load balancing, and caching.
+
+- What is the role of the application server?
+  The application server executes the code (business logic) of the
+  website/application. It processes the request, interacts with the
+  database if needed, and generates the dynamic content (HTML, JSON,
+  etc.) that is sent back through the web server to the user.
+
+- What is the role of the database?
+  The database (MySQL) stores, organizes, and manages the data used by
+  the application (for example, user accounts, articles, products). It
+  allows the application server to read and write persistent data.
+
+- What is the server using to communicate with the user's computer?
+  The server communicates with the user's computer using the HTTP
+  protocol (or HTTPS, which is HTTP secured with SSL/TLS encryption),
+  over TCP/IP.
+
+Issues with this infrastructure:
+
+- SPOF (Single Point of Failure):
+  Since there is only one server, if that server fails (hardware
+  failure, crash, network issue), the entire website becomes
+  unavailable. There is no redundancy.
+
+- Downtime when maintenance is needed:
+  Since the web server, application server, and database all run on
+  the same machine, any maintenance (like deploying new code and
+  restarting the web server) will cause the whole website to go down,
+  because everything is coupled together on one server.
+
+- Cannot scale if too much incoming traffic:
+  A single server has limited resources (CPU, RAM, disk, bandwidth).
+  If traffic increases significantly, this one server cannot handle
+  the load, and there is no way to add more servers to share the
+  traffic (no horizontal scaling), which leads to slow performance or
+  downtime.
